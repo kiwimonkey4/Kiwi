@@ -8,6 +8,7 @@
 
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+using namespace std; 
 
 //==============================================================================
 KiwiPluginAudioProcessor::KiwiPluginAudioProcessor()
@@ -93,24 +94,21 @@ void KiwiPluginAudioProcessor::changeProgramName (int index, const juce::String&
 //==============================================================================
 void KiwiPluginAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
-    // Use this method as the place to do any pre-playback
+    // Use this method as the place to do any pre-playback 
     // initialisation that you need..
 
     juce::ignoreUnused (samplesPerBlock);
     currentSampleRate = (sampleRate > 0.0 ? sampleRate : 44100.0);
-    activeNoteCount = 0;
 
     noteOnCountdownSamples = -1;
-    noteOffCountdownSamples = -1;
+    noteOffCountdownSamples = -1; 
 
-    double durationInSeconds = (3.0 * defaultBeatsPerBar * 60.0) / defaultBpm; // for the current notes 
-    noteDurationSamples = juce::jmax (1, (int) std::round (durationInSeconds * currentSampleRate));
 }
 
 void KiwiPluginAudioProcessor::releaseResources()
 {
-    // When playback stops, you can use this as an opportunity to free up any
-    // spare memory, etc.
+    // When playback stops, you can use this as an opportunity to free up anything you no longer need. For example, if you were using the
+    // spare memory, etc 
     noteOnCountdownSamples = -1;
     noteOffCountdownSamples = -1;
 }
@@ -142,10 +140,8 @@ bool KiwiPluginAudioProcessor::isBusesLayoutSupported (const BusesLayout& layout
 #endif
 
 void KiwiPluginAudioProcessor::configureTempo() {
-     // Get current tempo and time signature from host, if available 
-    double bpm = defaultBpm;
-    double beatsPerBar = defaultBeatsPerBar;        
 
+    // Get current tempo and time signature from host, if available 
     if (auto* playHead = getPlayHead())
     {
         juce::AudioPlayHead::CurrentPositionInfo posInfo;
@@ -160,6 +156,11 @@ void KiwiPluginAudioProcessor::configureTempo() {
     }
 }
 
+bool KiwiPluginAudioProcessor::isGeneratorLoading()
+{
+    return sequenceGenerator.getLoadingStatus();
+}
+
 void KiwiPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
@@ -172,58 +173,28 @@ void KiwiPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     midiMessages.clear();
     
     int blockSize = buffer.getNumSamples();
-
-    // Recalculate duration for 3 bars in a sample
     this->configureTempo();  
-    double durationInSeconds = (3.0 * beatsPerBar * 60.0) / bpm;
-    noteDurationSamples = juce::jmax (1, (int) std::round (durationInSeconds * currentSampleRate));
     
-    // If button was pressed, schedule the sequence to start  
-    if (shouldGenerateSequence && !sequenceInProgress)
+    // If button was pressed, schedule the sequence to start 
+    if (!sequenceInProgress && shouldGenerateSequence)
     {
-        noteOnCountdownSamples = triggerDelaySamples; // how many samples in the future does the sequence start? 
-        noteOffCountdownSamples = triggerDelaySamples + noteDurationSamples; // how many samples in the future does the sequence end?
+       // DBG("processBlock: Starting sequence! bpm=" + juce::String(bpm) + " sampleRate=" + juce::String(currentSampleRate));
         sequenceInProgress = true;
-        shouldGenerateSequence = false;  
-        DBG("Note scheduled: duration = " + juce::String(noteDurationSamples) + " samples (3 bars at " + juce::String(bpm) + " BPM)");
-    }
-    
-    // Handle note ON (does the note start in this block)
-    if (noteOnCountdownSamples >= 0 && noteOnCountdownSamples < blockSize)
-    {
-        midiMessages.addEvent(
-            juce::MidiMessage::noteOn(scheduledMidiChannel, scheduledMidiNote, scheduledVelocity),
-            noteOnCountdownSamples
-        );
-        DBG("Note ON at sample " + juce::String(noteOnCountdownSamples));
-        noteOnCountdownSamples = -1; // Note has started 
-    }
-    else if (noteOnCountdownSamples >= blockSize) // Note starts in a future block 
-    {
-        noteOnCountdownSamples -= blockSize; // Block is consumed 
-    }
-    
-    // Handle note off (does the note turn off in this block) 
-    if (noteOffCountdownSamples >= 0 && noteOffCountdownSamples < blockSize)
-    {
-        midiMessages.addEvent(
-            juce::MidiMessage::noteOff(scheduledMidiChannel, scheduledMidiNote),
-            noteOffCountdownSamples
-        );
-        DBG("Note OFF at sample " + juce::String(noteOffCountdownSamples));
-        noteOffCountdownSamples = -1; // Note has ended
-    }
-    else if (noteOffCountdownSamples >= blockSize)
-    {
-        noteOffCountdownSamples -= blockSize;
+        shouldGenerateSequence = false; 
+        sequenceGenerator.extractSequence(bpm, currentSampleRate);
+       // DBG("processBlock: Extracted " + juce::String((int)sequenceGenerator.getNoteSequence().size()) + " notes");
     }
 
-    // Sequence has finished being processed
-    if(noteOnCountdownSamples < 0 && noteOffCountdownSamples < 0 && sequenceInProgress) {
-        DBG("Sequence finished.");
-        sequenceInProgress = false; // Reset for next trigger
+    if(sequenceInProgress) { 
+        sequenceGenerator.processSequence(blockSize, midiMessages);
+        if(sequenceGenerator.isSequenceFinished()) {
+            DBG("processBlock: Sequence finished.");
+            sequenceInProgress = false;
+        }
     }
+
 }
+
 //==============================================================================
 bool KiwiPluginAudioProcessor::hasEditor() const
 {
