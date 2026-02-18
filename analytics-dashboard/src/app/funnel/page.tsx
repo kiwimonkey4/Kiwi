@@ -65,15 +65,30 @@ export default function FunnelPage() {
   }, [funnelRows]);
 
   return (
-    <DashboardShell title="Conversion funnel">
+    <DashboardShell 
+      title="Conversion Data"
+      titleInfo="Conversion in this case refers to the percent of the user's prompts that are translated into the event of dropping the generated MIDI file into their DAW. This metric gives insight into the plugin's effectiveness, as a user will likely only accept the MIDI stem if they are satisfied with the quality of the generated response"
+    >
       {error ? (
         <div className="rounded border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
       ) : null}
 
       <div className="grid gap-4 md:grid-cols-3">
-        <KpiCard label="Start events" value={funnelRows[0]?.count ?? 0} hint={funnelRows[0] ? formatEventDisplayName(funnelRows[0].step) : ""} />
-        <KpiCard label="Final conversion" value={`${funnelRows[funnelRows.length - 1]?.pctFromStart ?? 0}%`} hint={`${formatEventDisplayName("midi_dragged")} from start`} />
-        <KpiCard label="Drop-off" value={`${dropOffPct}%`} hint="From first to final step" />
+        <KpiCard 
+          label="Start events" 
+          value={funnelRows[0]?.count ?? 0}
+          info="Number of prompts submitted. A prompt submission is the first step in the conversion pipeline"
+        />
+        <KpiCard 
+          label="Final conversion" 
+          value={`${funnelRows[funnelRows.length - 1]?.pctFromStart ?? 0}%`}
+          info="Ratio of prompt submissions that lead to MIDI stems being accepted to the total number of prompt submissions"
+        />
+        <KpiCard 
+          label="Drop-off" 
+          value={`${dropOffPct}%`}
+          info="Ratio of prompt submissions that do not lead to MIDI stem acceptances to total number of prompt submissions"
+        />
       </div>
 
       <article className="h-96 rounded-xl border border-kiwi-green-200 bg-kiwi-brown-50 p-4 shadow-sm backdrop-blur-sm">

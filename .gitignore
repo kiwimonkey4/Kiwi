@@ -2,5 +2,10 @@ node_modules/
 dist/
 .next/
 *.jsonl
+# Firebase / GCP service account files
+serviceAccountKey.json
+service-account-key.json
+firebase-service-account*.json
+*-firebase-adminsdk-*.json
 .DS_Store
 Thumbs.db

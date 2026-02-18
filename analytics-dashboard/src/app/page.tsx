@@ -39,7 +39,7 @@ export default function OverviewPage() {
       });
 
     return () => {
-      cancelled = true;
+      cancelled = true; 
     };
   }, [filters.cohort, filters.event, filters.from, filters.to]);
 
@@ -61,9 +61,21 @@ export default function OverviewPage() {
       ) : null}
 
       <div className="grid gap-4 md:grid-cols-3">
-        <KpiCard label="Total generations" value={generation.totalGenerations} hint={formatEventDisplayName("generation_completed")} />
-        <KpiCard label="Generation success rate" value={`${generation.successRatePct}%`} hint="completed / (completed + failed)" />
-        <KpiCard label="Avg generation latency" value={`${generation.avgLatencyMs} ms`} />
+        <KpiCard 
+          label="Total generations" 
+          value={generation.totalGenerations}
+          info="Total number of successful generations"
+        />
+        <KpiCard 
+          label="Generation success rate" 
+          value={`${generation.successRatePct}%`}
+          info="Ratio of successful generations to total number of generations attempted (i.e number of prompts submitted)"
+        />
+        <KpiCard 
+          label="Avg generation latency" 
+          value={`${generation.avgLatencyMs} ms`}
+          info="Average time taken from prompt submission to receipt of generated MIDI stem"
+        />
       </div>
 
       <article className="h-80 rounded-xl border border-kiwi-green-200 bg-kiwi-brown-50 p-4 shadow-sm backdrop-blur-sm">

@@ -31,13 +31,11 @@ function toDateInputString(value: Date): string {
 }
 
 export function getDefaultFilters(): DashboardFilters {
-  const to = new Date();
-  const from = new Date();
-  from.setDate(to.getDate() - 14);
+  const today = new Date();
 
   return {
-    from: toDateInputString(from),
-    to: toDateInputString(to),
+    from: toDateInputString(today),
+    to: toDateInputString(today),
     event: "all",
     cohort: "all"
   };
