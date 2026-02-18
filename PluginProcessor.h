@@ -67,9 +67,7 @@ public:
     void setSequence();
     
     // Delegate to Generator
-    void sendPromptToGenerator(const juce::String& prompt, std::function<void(juce::String)> callback) {
-        sequenceGenerator.sendToGenerator(prompt, callback);
-    }
+    void sendPromptToGenerator(const juce::String& prompt, std::function<void(juce::String)> callback);
     
     void replaySequence() {
         DBG("replaySequence called. noteSequence size: " + juce::String((int)sequenceGenerator.getNoteSequence().size()) + ", sequenceInProgress: " + juce::String(sequenceInProgress ? "true" : "false"));
@@ -111,6 +109,8 @@ public:
     AnalyticsService& getAnalytics() { return analytics; }
 
 private:
+    juce::StringArray getRecentPromptsForContext(int maxPromptCount) const;
+
     double currentSampleRate = 44100.0;
 
     int noteOnCountdownSamples = -1;   // samples until note-on, relative to block start

@@ -274,7 +274,8 @@ juce::File Generator::createMidiFile(double bpm) {
 }
 
 void Generator::sendToGenerator(const juce::String& prompt,
-                               std::function<void(juce::String)> callback)
+                                const juce::StringArray& recentPrompts,
+                                std::function<void(juce::String)> callback)
 {
     if (apiKey.isEmpty())
     {
@@ -287,10 +288,19 @@ void Generator::sendToGenerator(const juce::String& prompt,
     // Set loading flag at the start
     loading = true;
 
-    // Build JSON request 
+    // Build JSON request.
+    juce::String requestInput = apiInstructions;
+    if (recentPrompts.size() > 0)
+    {
+        requestInput << "\n\nContext from previous user prompts (oldest to newest, max 2):";
+        for (int i = 0; i < recentPrompts.size(); ++i)
+            requestInput << "\n- Previous prompt " + juce::String(i + 1) + ": " + recentPrompts[i];
+    }
+    requestInput << "\n\nCurrent user prompt:\n" + prompt;
+
     juce::DynamicObject::Ptr jsonBody = new juce::DynamicObject();
-    jsonBody->setProperty("model", "gpt-5-mini-2025-08-07");
-    jsonBody->setProperty("input", apiInstructions + "\n\nUser prompt:\n" + prompt);
+    jsonBody->setProperty("model", "gpt-5.2-2025-12-11");
+    jsonBody->setProperty("input", requestInput);
 
     // Force JSON-only output 
     juce::DynamicObject::Ptr formatConfig = new juce::DynamicObject();

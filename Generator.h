@@ -15,8 +15,11 @@ public:
         juce::CriticalSection lock;
     };
     
-    // Send text to OpenAI API and get response via callback
-    void sendToGenerator(const juce::String& prompt, std::function<void(juce::String)> callback);
+    // Send text to OpenAI API and get response via callback.
+    // recentPrompts provides short rolling context from previous requests.
+    void sendToGenerator(const juce::String& prompt,
+                         const juce::StringArray& recentPrompts,
+                         std::function<void(juce::String)> callback);
     void extractSequence(double bpm, double sampleRate);
     void processSequence(int blockSize, juce::MidiBuffer& midiMessages);
     bool isSequenceFinished();

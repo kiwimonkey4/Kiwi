@@ -161,6 +161,32 @@ bool KiwiPluginAudioProcessor::isGeneratorLoading()
     return sequenceGenerator.getLoadingStatus();
 }
 
+juce::StringArray KiwiPluginAudioProcessor::getRecentPromptsForContext(int maxPromptCount) const
+{
+    juce::StringArray recentPrompts;
+    if (maxPromptCount <= 0)
+        return recentPrompts;
+
+    const juce::ScopedLock lock(chatHistoryLock);
+    const int historySize = (int) chatHistory.size();
+    const int startIndex = juce::jmax(0, historySize - maxPromptCount);
+
+    for (int i = startIndex; i < historySize; ++i)
+    {
+        const juce::String prompt = chatHistory[(size_t) i].prompt.trim();
+        if (prompt.isNotEmpty())
+            recentPrompts.add(prompt);
+    }
+
+    return recentPrompts;
+}
+
+void KiwiPluginAudioProcessor::sendPromptToGenerator(const juce::String& prompt,
+                                                     std::function<void(juce::String)> callback)
+{
+    sequenceGenerator.sendToGenerator(prompt, getRecentPromptsForContext(2), callback);
+}
+
 void KiwiPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
