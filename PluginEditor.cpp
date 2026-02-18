@@ -31,8 +31,6 @@ KiwiPluginAudioProcessorEditor::KiwiPluginAudioProcessorEditor (KiwiPluginAudioP
         audioProcessor.trackEvent("midi_dragged", juce::var(props.get()));
     });
 
-    audioProcessor.trackEvent("editor_opened");
-    
     // Check if generator is loading and restore loading state
     if (audioProcessor.isGeneratorLoading())
     {
@@ -58,7 +56,6 @@ KiwiPluginAudioProcessorEditor::KiwiPluginAudioProcessorEditor (KiwiPluginAudioP
         DBG("Replay button clicked. sequenceInProgress: " + juce::String(audioProcessor.getSequenceStatus() ? "true" : "false"));
         if(!audioProcessor.getSequenceStatus()) {
             audioProcessor.replaySequence();
-            audioProcessor.trackEvent("midi_replayed");
             DBG("replaySequence() called");
         }
         else {

@@ -5,12 +5,17 @@ import { Bar, BarChart, CartesianGrid, LabelList, ResponsiveContainer, Tooltip, 
 import { DashboardShell } from "@/components/dashboard-shell";
 import { KpiCard } from "@/components/kpi-card";
 import { fetchEvents } from "@/lib/api";
+import { formatEventDisplayName } from "@/lib/filters";
 import { getFunnel } from "@/lib/metrics";
 import type { AnalyticsEvent } from "@/lib/types";
 import { useDashboardFilters } from "@/lib/use-dashboard-filters";
 
 export default function FunnelPage() {
   const filters = useDashboardFilters();
+  const funnelFilters = useMemo(
+    () => ({ ...filters, event: "all" as const }),
+    [filters]
+  );
   const [events, setEvents] = useState<AnalyticsEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -20,7 +25,7 @@ export default function FunnelPage() {
     setLoading(true);
     setError(null);
 
-    fetchEvents(filters)
+    fetchEvents(funnelFilters)
       .then((response) => {
         if (!cancelled) {
           setEvents(response.rows);
@@ -40,9 +45,13 @@ export default function FunnelPage() {
     return () => {
       cancelled = true;
     };
-  }, [filters.cohort, filters.event, filters.from, filters.to]);
+  }, [funnelFilters]);
 
   const funnelRows = useMemo(() => getFunnel(events), [events]);
+  const funnelRowsWithLabels = useMemo(
+    () => funnelRows.map((row) => ({ ...row, stepLabel: formatEventDisplayName(row.step) })),
+    [funnelRows]
+  );
   const dropOffPct = useMemo(() => {
     if (funnelRows.length < 2) {
       return 0;
@@ -62,35 +71,35 @@ export default function FunnelPage() {
       ) : null}
 
       <div className="grid gap-4 md:grid-cols-3">
-        <KpiCard label="Start events" value={funnelRows[0]?.count ?? 0} hint="editor_opened" />
-        <KpiCard label="Final conversion" value={`${funnelRows[funnelRows.length - 1]?.pctFromStart ?? 0}%`} hint="midi_dragged from start" />
+        <KpiCard label="Start events" value={funnelRows[0]?.count ?? 0} hint={funnelRows[0] ? formatEventDisplayName(funnelRows[0].step) : ""} />
+        <KpiCard label="Final conversion" value={`${funnelRows[funnelRows.length - 1]?.pctFromStart ?? 0}%`} hint={`${formatEventDisplayName("midi_dragged")} from start`} />
         <KpiCard label="Drop-off" value={`${dropOffPct}%`} hint="From first to final step" />
       </div>
 
-      <article className="h-96 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-        <h2 className="mb-3 text-base font-semibold text-gray-900">Funnel steps</h2>
+      <article className="h-96 rounded-xl border border-kiwi-green-200 bg-kiwi-brown-50 p-4 shadow-sm backdrop-blur-sm">
+        <h2 className="mb-3 text-sm uppercase tracking-wider font-bold text-kiwi-green-800">Funnel steps</h2>
         {loading ? (
-          <p className="text-sm text-gray-500">Loading...</p>
+          <p className="text-sm text-kiwi-brown-500">Loading...</p>
         ) : (
           <ResponsiveContainer width="100%" height="84%">
-            <BarChart data={funnelRows} layout="vertical" margin={{ left: 35, right: 30 }}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis type="number" allowDecimals={false} />
-              <YAxis type="category" dataKey="step" width={170} />
+            <BarChart data={funnelRowsWithLabels} layout="vertical" margin={{ left: 35, right: 30 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#bae5cd" />
+              <XAxis type="number" allowDecimals={false} tick={{ fill: "#614938" }} />
+              <YAxis type="category" dataKey="stepLabel" width={170} tick={{ fill: "#614938" }} />
               <Tooltip />
-              <Bar dataKey="count" fill="#f97316">
-                <LabelList dataKey="pctFromStart" position="right" formatter={(value: number) => `${value}%`} />
+              <Bar dataKey="count" fill="#3a9f6a">
+                <LabelList dataKey="pctFromStart" position="right" formatter={(value: number) => `${value}%`} fill="#614938" />
               </Bar>
             </BarChart>
           </ResponsiveContainer>
         )}
       </article>
 
-      <article className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-        <h2 className="mb-3 text-base font-semibold text-gray-900">Step conversions</h2>
+      <article className="rounded-xl border border-kiwi-green-200 bg-kiwi-brown-50 p-4 shadow-sm backdrop-blur-sm">
+        <h2 className="mb-3 text-sm uppercase tracking-wider font-bold text-kiwi-green-800">Step conversions</h2>
         <div className="overflow-x-auto">
           <table className="min-w-full text-left text-sm">
-            <thead className="border-b border-gray-200 bg-gray-50 text-gray-600">
+            <thead className="border-b border-kiwi-green-200 bg-kiwi-green-50 text-kiwi-brown-600">
               <tr>
                 <th className="px-3 py-2 font-medium">Step</th>
                 <th className="px-3 py-2 font-medium">Count</th>
@@ -100,8 +109,8 @@ export default function FunnelPage() {
             </thead>
             <tbody>
               {funnelRows.map((row) => (
-                <tr key={row.step} className="border-b border-gray-100 text-gray-700">
-                  <td className="px-3 py-2">{row.step}</td>
+                <tr key={row.step} className="border-b border-kiwi-green-100 text-kiwi-brown-700">
+                  <td className="px-3 py-2">{formatEventDisplayName(row.step)}</td>
                   <td className="px-3 py-2">{row.count}</td>
                   <td className="px-3 py-2">{row.pctFromPrevious}%</td>
                   <td className="px-3 py-2">{row.pctFromStart}%</td>

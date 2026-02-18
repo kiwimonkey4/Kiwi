@@ -1,4 +1,5 @@
 #include "AnalyticsService.h"
+#include <ctime>
 
 namespace
 {
@@ -24,7 +25,25 @@ namespace
 
     juce::String nowIso8601Utc()
     {
-        return juce::Time::getCurrentTime().toString(true, true);
+        const auto nowMillis = juce::Time::currentTimeMillis();
+        const auto epochSeconds = static_cast<std::time_t>(nowMillis / 1000);
+        const auto millisPart = static_cast<int>(nowMillis % 1000);
+
+        std::tm utcTime {};
+       #if JUCE_WINDOWS
+        gmtime_s(&utcTime, &epochSeconds);
+       #else
+        gmtime_r(&epochSeconds, &utcTime);
+       #endif
+
+        return juce::String::formatted("%04d-%02d-%02dT%02d:%02d:%02d.%03dZ",
+                                       utcTime.tm_year + 1900,
+                                       utcTime.tm_mon + 1,
+                                       utcTime.tm_mday,
+                                       utcTime.tm_hour,
+                                       utcTime.tm_min,
+                                       utcTime.tm_sec,
+                                       millisPart);
     }
 
     juce::URL::InputStreamOptions makeDefaultOptions(int* statusCode)
@@ -142,8 +161,6 @@ void AnalyticsService::trackEvent(const juce::String& eventName, const juce::var
         event->setProperty("props", properties);
 
     appendEventToDisk(juce::var(event.get()));
-
-    eventsSinceLastFlush.fetch_add(1);
     maybeFlushAsync();
 }
 
@@ -153,10 +170,7 @@ void AnalyticsService::maybeFlushAsync()
     if (endpoint.isEmpty())
         return;
 
-    // Flush every ~5 events to avoid spamming the network.
-    if (eventsSinceLastFlush.load() < 5)
-        return;
-
+    // For local development we want immediate visibility in the dashboard.
     flushAsync();
 }
 
@@ -168,8 +182,6 @@ void AnalyticsService::flushAsync()
     bool expected = false;
     if (! flushInProgress.compare_exchange_strong(expected, true))
         return;
-
-    eventsSinceLastFlush.store(0);
 
     juce::Thread::launch([this]
     {

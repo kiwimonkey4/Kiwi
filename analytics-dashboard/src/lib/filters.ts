@@ -1,13 +1,20 @@
 import type { DashboardFilters } from "@/lib/types";
 
+/** Converts snake_case event name to "Firstword Secondword" for display. */
+export function formatEventDisplayName(eventKey: string): string {
+  if (!eventKey || eventKey === "all") return eventKey;
+  return eventKey
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
 export const EVENT_FILTER_OPTIONS = [
   { value: "all", label: "All events" },
-  { value: "editor_opened", label: "editor_opened" },
-  { value: "prompt_submitted", label: "prompt_submitted" },
-  { value: "generation_completed", label: "generation_completed" },
-  { value: "generation_failed", label: "generation_failed" },
-  { value: "midi_dragged", label: "midi_dragged" },
-  { value: "midi_replayed", label: "midi_replayed" }
+  { value: "prompt_submitted", label: formatEventDisplayName("prompt_submitted") },
+  { value: "generation_completed", label: formatEventDisplayName("generation_completed") },
+  { value: "generation_failed", label: formatEventDisplayName("generation_failed") },
+  { value: "midi_dragged", label: formatEventDisplayName("midi_dragged") }
 ] as const;
 
 export const COHORT_OPTIONS = [

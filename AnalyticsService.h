@@ -34,7 +34,6 @@ private:
 
     mutable juce::CriticalSection lock;
     std::atomic<bool> flushInProgress { false };
-    std::atomic<int> eventsSinceLastFlush { 0 };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AnalyticsService)
 };

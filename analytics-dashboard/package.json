@@ -9,10 +9,15 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@react-three/fiber": "^9.5.0",
+    "@react-three/postprocessing": "^3.0.4",
+    "motion": "^11.18.2",
     "next": "^15.1.6",
+    "postprocessing": "^6.38.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "recharts": "^2.15.0"
+    "recharts": "^2.15.0",
+    "three": "^0.182.0"
   },
   "devDependencies": {
     "@types/node": "^22.13.1",

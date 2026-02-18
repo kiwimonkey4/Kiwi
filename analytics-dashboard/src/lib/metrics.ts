@@ -73,7 +73,7 @@ export function getDailyUsage(events: AnalyticsEvent[]): Array<{ day: string; da
 
 export function getFunnel(events: AnalyticsEvent[]): Array<{ step: string; count: number; pctFromPrevious: number; pctFromStart: number }> {
   const eventCounts = getEventCounts(events);
-  const steps = ["editor_opened", "prompt_submitted", "generation_completed", "midi_dragged"] as const;
+  const steps = ["prompt_submitted", "generation_completed", "midi_dragged"] as const;
 
   return steps.map((step, index) => {
     const count = eventCounts[step] ?? 0;
