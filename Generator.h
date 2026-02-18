@@ -69,7 +69,7 @@ private:
     - Avoid dissonant or out-of-key notes unless explicitly requested
 
     Structure rules:
-    - Generate a coherent musical phrase (e.g., 1-6 bars)
+    - Generate a coherent musical phrase
     - Melody and chords should feel intentional and related
     - Avoid random or erratic note placement
 

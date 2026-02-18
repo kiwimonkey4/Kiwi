@@ -117,9 +117,9 @@ void ChatHistoryComponent::ChatEntryComponent::paint(juce::Graphics& g)
     g.setColour(juce::Colour(0xFF795C34)); // #795C34 brown bubble
     g.fillRoundedRectangle(promptBubble.toFloat(), 8.0f);
     
-    g.setColour(juce::Colours::white);
+    g.setColour(juce::Colours::black);
     juce::Font promptFont (getLookAndFeel().getTypefaceForFont (juce::Font()));
-    promptFont.setHeight(11.0f);
+    promptFont.setHeight(12.0f);
     g.setFont(promptFont);
     g.drawMultiLineText(entry.prompt, padding + 8, y + 18, getWidth() - 2 * padding - 16);
     

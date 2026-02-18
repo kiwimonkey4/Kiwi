@@ -14,7 +14,7 @@ Generator::Generator()
 
 Generator::~Generator()
 {
-    // Mark as invalid so background threads won't access this object
+    // Mark as invalid so background threads won't access this object 
     sharedState->isValid = false;
     
     // Clean up all created MIDI files
@@ -122,7 +122,7 @@ int Generator::getNoteCountFromSequenceJSON() const
 
 void Generator::extractSequence(double bpm, double sampleRate)
 {
-    // Get the sequence JSON from the API response wrapper
+    // Get the sequence JSON from the API response wrapper 
     juce::String content = sequenceJSON;
     
     if (content.startsWith("Error:"))
@@ -289,7 +289,7 @@ void Generator::sendToGenerator(const juce::String& prompt,
 
     // Build JSON request 
     juce::DynamicObject::Ptr jsonBody = new juce::DynamicObject();
-    jsonBody->setProperty("model", "gpt-5-nano-2025-08-07");
+    jsonBody->setProperty("model", "gpt-5-mini-2025-08-07");
     jsonBody->setProperty("input", apiInstructions + "\n\nUser prompt:\n" + prompt);
 
     // Force JSON-only output 
@@ -367,7 +367,7 @@ void Generator::sendToGenerator(const juce::String& prompt,
             {
                 // Parse the sequence JSON on the main thread
                 getSequenceJSON(response);
-                // Clear loading flag after successful response
+                // Clear loading flag after successful response 
                 loading = false;
             }
             

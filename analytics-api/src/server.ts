@@ -5,9 +5,127 @@ import { appendEvents, readEvents } from "./store.js";
 
 const app = express();
 const port = Number(process.env.PORT ?? 8787);
+type Cohort = "all" | "new" | "returning";
 
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
+
+function parseDateParam(value: unknown): Date | null {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function parseEventFilter(value: unknown): Set<string> | null {
+  if (typeof value !== "string" || value.trim().length === 0 || value === "all") {
+    return null;
+  }
+
+  const events = value
+    .split(",")
+    .map((event) => event.trim())
+    .filter(Boolean);
+
+  if (events.length === 0) {
+    return null;
+  }
+
+  return new Set(events);
+}
+
+function parseCohort(value: unknown): Cohort {
+  if (value === "new" || value === "returning") {
+    return value;
+  }
+  return "all";
+}
+
+function buildFirstSeenByUser() {
+  const firstSeen = new Map<string, Date>();
+
+  for (const event of readEvents()) {
+    const ts = new Date(event.ts_iso);
+    if (Number.isNaN(ts.getTime())) {
+      continue;
+    }
+
+    const existing = firstSeen.get(event.user_id);
+    if (!existing || ts < existing) {
+      firstSeen.set(event.user_id, ts);
+    }
+  }
+
+  return firstSeen;
+}
+
+function isEventWithinWindow(eventIsoTs: string, from: Date | null, to: Date | null): boolean {
+  const ts = new Date(eventIsoTs);
+  if (Number.isNaN(ts.getTime())) {
+    return false;
+  }
+  if (from && ts < from) {
+    return false;
+  }
+  if (to && ts > to) {
+    return false;
+  }
+  return true;
+}
+
+function isUserInCohort(
+  userId: string,
+  firstSeenByUser: Map<string, Date>,
+  cohort: Cohort,
+  from: Date | null,
+  to: Date | null
+): boolean {
+  if (cohort === "all") {
+    return true;
+  }
+
+  const firstSeen = firstSeenByUser.get(userId);
+  if (!firstSeen) {
+    return false;
+  }
+
+  const rangeStart = from ?? new Date(0);
+  const rangeEnd = to ?? new Date(8640000000000000);
+  const isNew = firstSeen >= rangeStart && firstSeen <= rangeEnd;
+
+  return cohort === "new" ? isNew : !isNew;
+}
+
+function getFilteredEvents(req: express.Request) {
+  const from = parseDateParam(req.query.from);
+  const to = parseDateParam(req.query.to);
+  const eventFilter = parseEventFilter(req.query.event);
+  const cohort = parseCohort(req.query.cohort);
+
+  const firstSeenByUser = buildFirstSeenByUser();
+  const filtered = readEvents().filter((event) => {
+    if (!isEventWithinWindow(event.ts_iso, from, to)) {
+      return false;
+    }
+
+    if (eventFilter && !eventFilter.has(event.event)) {
+      return false;
+    }
+
+    return isUserInCohort(event.user_id, firstSeenByUser, cohort, from, to);
+  });
+
+  return {
+    filtered,
+    from,
+    to,
+    cohort,
+    eventFilter,
+    firstSeenByUser
+  };
+}
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true });
@@ -29,22 +147,7 @@ app.post("/api/trackEvent", (req, res) => {
 });
 
 app.get("/api/metrics/overview", (req, res) => {
-  const from = typeof req.query.from === "string" ? new Date(req.query.from) : null;
-  const to = typeof req.query.to === "string" ? new Date(req.query.to) : null;
-
-  const events = readEvents().filter((event) => {
-    const ts = new Date(event.ts_iso);
-    if (Number.isNaN(ts.getTime())) {
-      return false;
-    }
-    if (from && ts < from) {
-      return false;
-    }
-    if (to && ts > to) {
-      return false;
-    }
-    return true;
-  });
+  const { filtered: events, from, to, cohort, eventFilter } = getFilteredEvents(req);
 
   const uniqueUsers = new Set(events.map((event) => event.user_id)).size;
   const eventCounts = events.reduce<Record<string, number>>((acc, event) => {
@@ -74,7 +177,9 @@ app.get("/api/metrics/overview", (req, res) => {
     ok: true,
     window: {
       from: from?.toISOString() ?? null,
-      to: to?.toISOString() ?? null
+      to: to?.toISOString() ?? null,
+      cohort,
+      event: eventFilter ? Array.from(eventFilter.values()) : null
     },
     totals: {
       users: uniqueUsers,
@@ -91,19 +196,52 @@ app.get("/api/metrics/overview", (req, res) => {
   });
 });
 
-app.get("/api/metrics/daily", (_req, res) => {
-  const events = readEvents();
-  const byDay = events.reduce<Record<string, number>>((acc, event) => {
+app.get("/api/metrics/daily", (req, res) => {
+  const { filtered: events, from, to, cohort, eventFilter } = getFilteredEvents(req);
+  const byDay = events.reduce<Record<string, { events: number; users: Set<string> }>>((acc, event) => {
     const day = event.ts_iso.slice(0, 10);
-    acc[day] = (acc[day] ?? 0) + 1;
+    if (!acc[day]) {
+      acc[day] = { events: 0, users: new Set<string>() };
+    }
+    acc[day].events += 1;
+    acc[day].users.add(event.user_id);
     return acc;
   }, {});
 
   const rows = Object.entries(byDay)
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([day, count]) => ({ day, events: count }));
+    .map(([day, dayData]) => ({ day, events: dayData.events, dau: dayData.users.size }));
 
-  return res.json({ ok: true, rows });
+  return res.json({
+    ok: true,
+    window: {
+      from: from?.toISOString() ?? null,
+      to: to?.toISOString() ?? null,
+      cohort,
+      event: eventFilter ? Array.from(eventFilter.values()) : null
+    },
+    rows
+  });
+});
+
+app.get("/api/events", (req, res) => {
+  const { filtered, from, to, cohort, eventFilter, firstSeenByUser } = getFilteredEvents(req);
+  const firstSeenByUserJson = Object.fromEntries(
+    Array.from(firstSeenByUser.entries()).map(([userId, ts]) => [userId, ts.toISOString()])
+  );
+
+  return res.json({
+    ok: true,
+    window: {
+      from: from?.toISOString() ?? null,
+      to: to?.toISOString() ?? null,
+      cohort,
+      event: eventFilter ? Array.from(eventFilter.values()) : null
+    },
+    total_rows: filtered.length,
+    first_seen_by_user: firstSeenByUserJson,
+    rows: filtered
+  });
 });
 
 app.listen(port, () => {
