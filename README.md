@@ -30,7 +30,6 @@ analytics-api hosted w/ Railway, analytics dashboard hosted w/ Vercel
 - `Source/` - JUCE plugin source (`PluginEditor`, `PluginProcessor`, `Generator`, analytics instrumentation)
 - `Source/analytics-api/` - Express + Zod + Firebase Admin service
 - `Source/analytics-dashboard/` - Next.js dashboard client
-- `KiwiPlugin.jucer` - Projucer project definition
 
 ## How the Plugin Works
 
