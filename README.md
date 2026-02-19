@@ -23,6 +23,9 @@ Plugin parses notes -> schedules MIDI -> creates .mid file
                                              analytics-dashboard
 ```
 
+analytics-api hosted w/ Railway 
+analytics dashboard hosted w/ Vercel 
+
 ## Repository Layout
 
 - `Source/` - JUCE plugin source (`PluginEditor`, `PluginProcessor`, `Generator`, analytics instrumentation)
