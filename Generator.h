@@ -12,7 +12,7 @@ public:
     struct SharedState
     {
         std::atomic<bool> isValid{true};
-        juce::CriticalSection lock;
+        juce::CriticalSection lock; 
     };
     
     // Send text to OpenAI API and get response via callback.
@@ -88,9 +88,9 @@ private:
 
     juce::String apiEndpoint = "https://api.openai.com/v1/responses";
     juce::String sequenceJSON; 
-    std::vector<MidiNote> noteSequence; 
+    std::vector<MidiNote> noteSequence;
     std::vector<juce::File> createdMidiFiles; // Track files for cleanup
-    int sequenceTracker = 0; 
+    int sequenceTracker = 0; // Keeps track of how many notes in the sequence have finished playing to determine overall sequence completion ()
     int triggerDelaySamples = 10;
     int scheduledMidiChannel = 1;
     bool loading = false; 

@@ -1,34 +1,23 @@
+/**
+ * Loads environment variables from .env before other modules run.
+ * Uses KiwiPlugin/.env (project root). Supports multiline JSON (e.g. FIREBASE_SERVICE_ACCOUNT_JSON).
+ * Imported by firebase.ts so credentials are available at init time.
+ */
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { config as loadDotenv } from "dotenv";
 
-const explicitEnvPath = process.env.ANALYTICS_API_ENV_FILE;
+/** Path to .env file */
+const envPath =
+  process.env.ANALYTICS_API_ENV_FILE ??
+  path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../.env");
 
-const candidatePaths = [
-  explicitEnvPath,
-  path.resolve(process.cwd(), ".env"),
-  path.resolve(process.cwd(), ".env.local"),
-  path.resolve(process.cwd(), "..", ".env"),
-  path.resolve(process.cwd(), "..", ".env.local"),
-  path.resolve(process.cwd(), "..", "..", ".env"),
-  path.resolve(process.cwd(), "..", "..", ".env.local")
-].filter((value): value is string => Boolean(value));
-
-const seen = new Set<string>();
-const resolvedEnvPaths: string[] = [];
-for (const envPath of candidatePaths) {
-  const normalizedPath = path.normalize(envPath);
-  if (seen.has(normalizedPath)) {
-    continue;
-  }
-  seen.add(normalizedPath);
-  resolvedEnvPaths.push(normalizedPath);
-
-  if (fs.existsSync(normalizedPath)) {
-    loadDotenv({ path: normalizedPath, override: false });
-  }
+if (fs.existsSync(envPath)) {
+  loadDotenv({ path: envPath, override: false });
 }
 
+/** Check if a string is valid JSON*/
 function canParseJson(value: string): boolean {
   try {
     JSON.parse(value);
@@ -38,6 +27,7 @@ function canParseJson(value: string): boolean {
   }
 }
 
+/** Extract a multiline JSON value from .env (e.g. FIREBASE_SERVICE_ACCOUNT_JSON={...}) */
 function extractMultilineJsonValue(filePath: string, key: string): string | null {
   if (!fs.existsSync(filePath)) {
     return null;
@@ -73,6 +63,7 @@ function extractMultilineJsonValue(filePath: string, key: string): string | null
   return null;
 }
 
+/** If FIREBASE_SERVICE_ACCOUNT_JSON is missing or invalid, try extracting from .env as multiline */
 const existingServiceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON?.trim();
 const needsMultilineFallback =
   !existingServiceAccountJson ||
@@ -80,15 +71,8 @@ const needsMultilineFallback =
   !canParseJson(existingServiceAccountJson);
 
 if (needsMultilineFallback) {
-  for (const envPath of resolvedEnvPaths) {
-    const multilineValue = extractMultilineJsonValue(envPath, "FIREBASE_SERVICE_ACCOUNT_JSON");
-    if (!multilineValue) {
-      continue;
-    }
-
-    if (canParseJson(multilineValue)) {
-      process.env.FIREBASE_SERVICE_ACCOUNT_JSON = multilineValue;
-      break;
-    }
+  const multilineValue = extractMultilineJsonValue(envPath, "FIREBASE_SERVICE_ACCOUNT_JSON");
+  if (multilineValue && canParseJson(multilineValue)) {
+    process.env.FIREBASE_SERVICE_ACCOUNT_JSON = multilineValue;
   }
 }

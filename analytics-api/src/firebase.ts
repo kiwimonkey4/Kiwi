@@ -1,9 +1,14 @@
-import fs from "node:fs";
-import path from "node:path";
+/**
+ * Firebase Admin SDK initialization.
+ * Loads credentials from FIREBASE_SERVICE_ACCOUNT_JSON (env var or .env)
+ * and exports the Firestore db instance for store.ts.
+ */
+
 import { applicationDefault, cert, getApps, initializeApp, type ServiceAccount } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import "./load-env.js";
 
+/** Normalize service account object (handles both snake_case and camelCase keys) */
 function normalizeServiceAccount(raw: Record<string, unknown>): ServiceAccount {
   const projectId = raw.projectId ?? raw.project_id;
   const clientEmail = raw.clientEmail ?? raw.client_email;
@@ -21,13 +26,7 @@ function normalizeServiceAccount(raw: Record<string, unknown>): ServiceAccount {
   };
 }
 
-function loadServiceAccountFromPath(rawPath: string): ServiceAccount {
-  const resolvedPath = path.isAbsolute(rawPath) ? rawPath : path.resolve(process.cwd(), rawPath);
-  const contents = fs.readFileSync(resolvedPath, "utf8");
-  const parsed = JSON.parse(contents) as Record<string, unknown>;
-  return normalizeServiceAccount(parsed);
-}
-
+/** Get Firebase credential from FIREBASE_SERVICE_ACCOUNT_JSON */
 function getFirebaseCredential() {
   const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
   if (serviceAccountJson) {
@@ -43,14 +42,10 @@ function getFirebaseCredential() {
     }
   }
 
-  const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH ?? process.env.GOOGLE_APPLICATION_CREDENTIALS;
-  if (serviceAccountPath) {
-    return cert(loadServiceAccountFromPath(serviceAccountPath));
-  }
-
   return applicationDefault();
 }
 
+/** Initialize Firebase app */
 const firebaseApp =
   getApps().length > 0
     ? getApps()[0]
@@ -60,4 +55,4 @@ const firebaseApp =
       });
 
 export const db = getFirestore(firebaseApp);
-export const EVENTS_COLLECTION = process.env.FIRESTORE_EVENTS_COLLECTION ?? "events";
+export const EVENTS_COLLECTION = "events";

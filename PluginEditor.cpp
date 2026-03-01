@@ -20,7 +20,7 @@ KiwiPluginAudioProcessorEditor::KiwiPluginAudioProcessorEditor (KiwiPluginAudioP
     // Set custom LookAndFeel for global font
     setLookAndFeel(&customLookAndFeel);
     
-    // Load existing chat history from processor
+    // Load existing chat history from processor (persists across editor close/reopen)
     chatHistory.loadFromHistory(audioProcessor.getChatHistory());
     chatHistory.setOnMidiDragged([this](const ChatEntry& entry)
     {
@@ -28,7 +28,7 @@ KiwiPluginAudioProcessorEditor::KiwiPluginAudioProcessorEditor (KiwiPluginAudioP
         props->setProperty("has_midi_file", entry.midiFile.existsAsFile());
         props->setProperty("midi_file_bytes", (double) entry.midiFile.getSize());
         props->setProperty("prompt_length", (int) entry.prompt.length());
-        audioProcessor.trackEvent("midi_dragged", juce::var(props.get()));
+        analytics.trackEvent("midi_dragged", juce::var(props.get()));
     });
 
     // Check if generator is loading and restore loading state
@@ -89,7 +89,7 @@ KiwiPluginAudioProcessorEditor::KiwiPluginAudioProcessorEditor (KiwiPluginAudioP
                 juce::DynamicObject::Ptr props(new juce::DynamicObject());
                 props->setProperty("prompt_length", (int) userInput.length());
                 props->setProperty("prompt_hash64", juce::String(promptHash64));
-                audioProcessor.trackEvent("prompt_submitted", juce::var(props.get()));
+                analytics.trackEvent("prompt_submitted", juce::var(props.get()));
             }
 
             juce::String savedPrompt = userInput; // Save prompt before clearing
@@ -112,33 +112,25 @@ KiwiPluginAudioProcessorEditor::KiwiPluginAudioProcessorEditor (KiwiPluginAudioP
             juce::Component::SafePointer<KiwiPluginAudioProcessorEditor> safeThis(this);
             
             // Send to API - this runs async on background thread
-            audioProcessor.sendPromptToGenerator(userInput, [safeThis, savedPrompt, requestStartMs, &processor = audioProcessor](juce::String response) {
+            audioProcessor.sendPromptToGenerator(userInput, audioProcessor.getRecentPromptsForContext(2), [safeThis, savedPrompt, requestStartMs, &processor = audioProcessor](juce::String response) {
                 // This callback runs on main thread after API response
-                // Verify we're on the message thread
+                // Verify we're on the message thread 
                 jassert(juce::MessageManager::getInstance()->isThisTheMessageThread());
                 DBG("OpenAI Response received");
 
                 const auto latencyMs = (int) std::round(juce::Time::getMillisecondCounterHiRes() - requestStartMs);
                 const bool isError = response.startsWithIgnoreCase("Error:") || response.startsWithIgnoreCase("API error");
                 
-                // Check if editor still exists before accessing its members
+                // Check if editor still exists before accessing its members 
                 if (safeThis == nullptr)
                 {
                     DBG("Editor was destroyed - skipping UI updates but continuing audio processing");
 
-                    {
-                        juce::DynamicObject::Ptr props(new juce::DynamicObject());
-                        props->setProperty("latency_ms", latencyMs);
-                        props->setProperty("result", isError ? "error" : "ok");
-                        processor.trackEvent(isError ? "generation_failed" : "generation_completed", juce::var(props.get()));
-                    }
-                    
-                    // Editor is gone but we can still trigger audio (processor outlives editor)
+                    // Editor is gone but we can still trigger audio and persist history (processor outlives editor)
                     if(!processor.getSequenceStatus()) { 
                         processor.triggerNote();
                     }
                     
-                    // Create MIDI file and add to processor history
                     juce::File midiFile = processor.createMidiFile();
                     ChatEntry entry(savedPrompt, "Sequence generated", midiFile);
                     processor.addChatEntry(entry);
@@ -170,13 +162,13 @@ KiwiPluginAudioProcessorEditor::KiwiPluginAudioProcessorEditor (KiwiPluginAudioP
                     props->setProperty("result", isError ? "error" : "ok");
                     if (!isError)
                         props->setProperty("note_count", processor.getLastGeneratedNoteCount());
-                    processor.trackEvent(isError ? "generation_failed" : "generation_completed", juce::var(props.get()));
+                    safeThis->analytics.trackEvent(isError ? "generation_failed" : "generation_completed", juce::var(props.get()));
                 }
                 
                 // Create MIDI file automatically 
                 juce::File midiFile = processor.createMidiFile();
                 
-                // Add to chat history (both UI and processor storage)
+                // Add to chat history: UI component for display, processor for persistence across editor close/reopen
                 ChatEntry entry(savedPrompt, "Sequence generated", midiFile);
                 safeThis->chatHistory.addChatEntry(entry);
                 processor.addChatEntry(entry);

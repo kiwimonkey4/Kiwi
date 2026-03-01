@@ -41,7 +41,7 @@ export default function OverviewPage() {
     return () => {
       cancelled = true; 
     };
-  }, [filters.cohort, filters.event, filters.from, filters.to]);
+  }, [filters.event, filters.from, filters.to]);
 
   const generation = useMemo(() => getGenerationMetrics(events), [events]);
   const EXCLUDED_EVENTS = ["editor_opened", "midi_replayed"];

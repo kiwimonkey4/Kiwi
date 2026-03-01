@@ -1,5 +1,3 @@
-export type CohortFilter = "all" | "new" | "returning";
-
 export type AnalyticsEventName =
   | "editor_opened"
   | "prompt_submitted"
@@ -23,11 +21,9 @@ export interface DashboardFilters {
   from: string;
   to: string;
   event: string;
-  cohort: CohortFilter;
 }
 
 export interface EventsApiResponse {
   ok: boolean;
   rows: AnalyticsEvent[];
-  first_seen_by_user: Record<string, string>;
 }

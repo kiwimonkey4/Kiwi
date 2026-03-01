@@ -17,12 +17,6 @@ export const EVENT_FILTER_OPTIONS = [
   { value: "midi_dragged", label: formatEventDisplayName("midi_dragged") }
 ] as const;
 
-export const COHORT_OPTIONS = [
-  { value: "all", label: "All users" },
-  { value: "new", label: "New users" },
-  { value: "returning", label: "Returning users" }
-] as const;
-
 function toDateInputString(value: Date): string {
   const year = value.getFullYear();
   const month = String(value.getMonth() + 1).padStart(2, "0");
@@ -36,21 +30,17 @@ export function getDefaultFilters(): DashboardFilters {
   return {
     from: toDateInputString(today),
     to: toDateInputString(today),
-    event: "all",
-    cohort: "all"
+    event: "all"
   };
 }
 
 export function filtersFromSearchParams(searchParams: URLSearchParams): DashboardFilters {
   const defaults = getDefaultFilters();
-  const event = searchParams.get("event") ?? defaults.event;
-  const cohort = searchParams.get("cohort");
 
   return {
     from: searchParams.get("from") ?? defaults.from,
     to: searchParams.get("to") ?? defaults.to,
-    event,
-    cohort: cohort === "new" || cohort === "returning" ? cohort : defaults.cohort
+    event: searchParams.get("event") ?? defaults.event
   };
 }
 
@@ -64,9 +54,6 @@ export function toQueryParams(filters: DashboardFilters): URLSearchParams {
   }
   if (filters.event && filters.event !== "all") {
     params.set("event", filters.event);
-  }
-  if (filters.cohort && filters.cohort !== "all") {
-    params.set("cohort", filters.cohort);
   }
   return params;
 }

@@ -6,8 +6,14 @@
   ==============================================================================
 */
 
+#include <JuceHeader.h>
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "MidiNote.h"
+#include "Generator.h"
+#include "ChatEntry.h"
+#include "AnalyticsService.h"
+
 using namespace std; 
 
 //==============================================================================
@@ -91,7 +97,11 @@ void KiwiPluginAudioProcessor::changeProgramName (int index, const juce::String&
 {
 }
 
-//==============================================================================
+/**
+ * @brief Pre-playback initialization which is called when sample rate changes 
+ * @param sampleRate The new sample rate in Hz
+ * @param samplesPerBlock The new block size in samples for audio processing
+ */
 void KiwiPluginAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     // Use this method as the place to do any pre-playback 
@@ -100,17 +110,12 @@ void KiwiPluginAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
     juce::ignoreUnused (samplesPerBlock);
     currentSampleRate = (sampleRate > 0.0 ? sampleRate : 44100.0);
 
-    noteOnCountdownSamples = -1;
-    noteOffCountdownSamples = -1; 
-
 }
 
 void KiwiPluginAudioProcessor::releaseResources()
 {
     // When playback stops, you can use this as an opportunity to free up anything you no longer need. For example, if you were using the
     // spare memory, etc 
-    noteOnCountdownSamples = -1;
-    noteOffCountdownSamples = -1;
 }
 
 #ifndef JucePlugin_PreferredChannelConfigurations
@@ -139,9 +144,12 @@ bool KiwiPluginAudioProcessor::isBusesLayoutSupported (const BusesLayout& layout
 }
 #endif
 
+/**
+ * @brief Method updates output tempo with host tempo
+ */
 void KiwiPluginAudioProcessor::configureTempo() {
 
-    // Get current tempo and time signature from host, if available 
+    // Get current tempo and time signature from host, if available
     if (auto* playHead = getPlayHead())
     {
         juce::AudioPlayHead::CurrentPositionInfo posInfo;
@@ -149,9 +157,6 @@ void KiwiPluginAudioProcessor::configureTempo() {
         {
             if (posInfo.bpm > 0.0)
                 bpm = posInfo.bpm;
-
-            if (posInfo.timeSigNumerator > 0)
-                beatsPerBar = (double) posInfo.timeSigNumerator;
         }
     }
 }
@@ -159,6 +164,27 @@ void KiwiPluginAudioProcessor::configureTempo() {
 bool KiwiPluginAudioProcessor::isGeneratorLoading()
 {
     return sequenceGenerator.getLoadingStatus();
+}
+
+
+void KiwiPluginAudioProcessor::sendPromptToGenerator(const juce::String& prompt, const juce::StringArray& recentPrompts,
+                                                     std::function<void(juce::String)> callback)
+{
+    sequenceGenerator.sendToGenerator(prompt, recentPrompts, callback); 
+}
+
+void KiwiPluginAudioProcessor::addChatEntry(const ChatEntry& entry)
+{
+    const juce::ScopedLock lock(chatHistoryLock);
+    if (chatHistory.size() >= 10)
+        chatHistory.erase(chatHistory.begin());
+    chatHistory.push_back(entry);
+}
+
+std::vector<ChatEntry> KiwiPluginAudioProcessor::getChatHistory() const
+{
+    const juce::ScopedLock lock(chatHistoryLock);
+    return chatHistory;
 }
 
 juce::StringArray KiwiPluginAudioProcessor::getRecentPromptsForContext(int maxPromptCount) const
@@ -181,36 +207,34 @@ juce::StringArray KiwiPluginAudioProcessor::getRecentPromptsForContext(int maxPr
     return recentPrompts;
 }
 
-void KiwiPluginAudioProcessor::sendPromptToGenerator(const juce::String& prompt,
-                                                     std::function<void(juce::String)> callback)
-{
-    sequenceGenerator.sendToGenerator(prompt, getRecentPromptsForContext(2), callback);
-}
-
+/**
+ * @brief Main audio processing loop where MIDI events are executed 
+ * @param buffer The block of audio samples 
+ * @param midiMessages Container for MIDI events 
+ */
 void KiwiPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
-    juce::ScopedNoDenormals noDenormals;
+    juce::ScopedNoDenormals noDenormals; 
     auto totalNumInputChannels  = getTotalNumInputChannels();
     auto totalNumOutputChannels = getTotalNumOutputChannels();
 
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear (i, 0, buffer.getNumSamples());
 
-    midiMessages.clear();
+    midiMessages.clear(); 
     
-    int blockSize = buffer.getNumSamples();
-    this->configureTempo();  
+    int blockSize = buffer.getNumSamples(); // Gets the current audio sample block size from the audio buffer
+    this->configureTempo(); // Configures tempo each block so that playback dynamically adapts to host tempo changes 
     
     // If button was pressed, schedule the sequence to start 
     if (!sequenceInProgress && shouldGenerateSequence)
     {
-       // DBG("processBlock: Starting sequence! bpm=" + juce::String(bpm) + " sampleRate=" + juce::String(currentSampleRate));
-        sequenceInProgress = true;
+        sequenceInProgress = true; 
         shouldGenerateSequence = false; 
-        sequenceGenerator.extractSequence(bpm, currentSampleRate);
-       // DBG("processBlock: Extracted " + juce::String((int)sequenceGenerator.getNoteSequence().size()) + " notes");
+        sequenceGenerator.extractSequence(bpm, currentSampleRate);  // parses API response into usable notes 
     }
 
+    // If a sequence is in progress, process the notes and add MIDI events to the buffer as needed 
     if(sequenceInProgress) { 
         sequenceGenerator.processSequence(blockSize, midiMessages);
         if(sequenceGenerator.isSequenceFinished()) {
@@ -220,6 +244,23 @@ void KiwiPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     }
 
 }
+
+/**
+ * @brief Resets the note sequence so that it can be played from the beginning again 
+ */
+void KiwiPluginAudioProcessor::replaySequence() {
+        DBG("replaySequence called. noteSequence size: " + juce::String((int)sequenceGenerator.getNoteSequence().size()) + ", sequenceInProgress: " + juce::String(sequenceInProgress ? "true" : "false"));
+        if (!sequenceGenerator.getNoteSequence().empty() && !sequenceInProgress) {
+            sequenceGenerator.resetSequence();
+            shouldGenerateSequence = true;
+            DBG("shouldGenerateSequence set to true");
+        }
+} 
+
+juce::File KiwiPluginAudioProcessor::createMidiFile() {
+        return sequenceGenerator.createMidiFile(bpm);
+}
+
 
 //==============================================================================
 bool KiwiPluginAudioProcessor::hasEditor() const

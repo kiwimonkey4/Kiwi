@@ -2,7 +2,7 @@
 #include "MidiNoteEvent.h"
 #include "MidiNote.h"
 
-#define MAX_TIMEOUT_MS 300000 // 5 minutes
+#define MAX_TIMEOUT_MS 300000 // 5 minutes before aborting POST request 
 #define MAX_REDIRECTS 5
 #define TICKS_PER_QUARTER_NOTE 480
 
@@ -29,6 +29,10 @@ Generator::~Generator()
     createdMidiFiles.clear();
 }
 
+/**
+ * @brief Creates a string representation of the MIDI note sequence from the string JSON response 
+ * @param apiResponse The raw string response from the OpenAI API
+ */
 void Generator::getSequenceJSON(const juce::String& apiResponse)
 {
     juce::String content;
@@ -70,7 +74,7 @@ void Generator::getSequenceJSON(const juce::String& apiResponse)
     }
     
     DBG("Extracted MIDI JSON: " + content);
-    sequenceJSON = content; 
+    sequenceJSON = content;  
 }
 
 juce::String Generator::loadApiKey() const
@@ -82,7 +86,7 @@ juce::String Generator::loadApiKey() const
     
     if (key.isNotEmpty())
     {
-        DBG("✓ Loaded API key from environment variable");
+        DBG("API key successfully loaded ");
         return key;
     }
 
@@ -104,6 +108,9 @@ juce::String Generator::loadApiKey() const
     return {};
 }
 
+/**
+ * @brief Computes total number of notes in the sequence from the sequenceJSON string 
+ */
 int Generator::getNoteCountFromSequenceJSON() const
 {
     auto notesJson = juce::JSON::parse(sequenceJSON);
@@ -120,18 +127,22 @@ int Generator::getNoteCountFromSequenceJSON() const
     return 0;
 }
 
+/**
+ * @brief Converts string representation of the MIDI note sequence into a vector of MidiNote objects that can be processed in the audio thread 
+ * @param bpm Beats Per Minute tempo of the host 
+ * @param sampleRate Sample rate of the host 
+ */
 void Generator::extractSequence(double bpm, double sampleRate)
 {
-    // Get the sequence JSON from the API response wrapper 
-    juce::String content = sequenceJSON;
     
-    if (content.startsWith("Error:"))
+    if (sequenceJSON.startsWith("Error:"))
         return;
-    
-    // Parse the JSON for the notes 
-    int runningSampleCount = triggerDelaySamples;  
-    noteSequence.clear(); 
-    auto notesJson = juce::JSON::parse(content);
+
+    int runningSampleCount = triggerDelaySamples;  // Start with initial delay to ensure notes are scheduled in the future
+    noteSequence.clear(); // Clear previous note sequence if it exists
+
+    // Parse the JSON to get note data with beat timing 
+    auto notesJson = juce::JSON::parse(sequenceJSON);
     if (notesJson.isObject())
     {
         auto* notesObj = notesJson.getDynamicObject();
@@ -140,12 +151,15 @@ void Generator::extractSequence(double bpm, double sampleRate)
         if (notesArray.isArray())
         {
             DBG("Found " + juce::String(notesArray.size()) + " notes");
-            
+
+            // Loop through each note in the JSON array and create MidiNote objects with timing parameters 
             for (int i = 0; i < notesArray.size(); i++)
             {
                 auto note = notesArray[i];
                 if (note.isObject())
                 {
+
+                    // Extract note information from the string JSON 
                     auto* noteObj = note.getDynamicObject();
                     float startBeats = noteObj->getProperty("start_beats");
                     float durationBeats = noteObj->getProperty("duration_beats");
@@ -156,7 +170,8 @@ void Generator::extractSequence(double bpm, double sampleRate)
                     double durationInSeconds = (durationBeats * 60.0) / bpm;
                     int startSamples = triggerDelaySamples + juce::jmax(1, (int) std::round(startInSeconds * sampleRate)); 
                     int noteDurationSamples = juce::jmax(1, (int) std::round(durationInSeconds * sampleRate));
-                    
+
+                    // Create midi events and add to the sequence 
                     MidiNoteEvent noteEvent{scheduledMidiChannel, midiNote, (juce::uint8) velocity};
                     noteSequence.emplace_back(noteEvent, startSamples, startSamples + noteDurationSamples);
 
@@ -171,17 +186,29 @@ void Generator::extractSequence(double bpm, double sampleRate)
     
 }
 
+/**
+ * @brief Processes all the notes in the noteSequence and updates their timing parameters accordingly 
+ * @param blockSize The size of the current audio processing block in samples
+ * @param midiMessages The MIDI buffer to which the note-on and note-off events should be added when triggered 
+ */
 void Generator::processSequence(int blockSize, juce::MidiBuffer& midiMessages)
 {
+    // Loop through all notes 
     for(auto it = noteSequence.begin(); it != noteSequence.end(); ++it) {
-        it->processNote(blockSize, midiMessages);
+        it->processNote(blockSize, midiMessages); // Update the note's timing parameters and add events to MIDI buffer if triggered
+
+        // Check if note has finished playing and update sequenceTracker accordingly to track overall sequence completion
         if(it->isFinished() && !it->hasBeenCounted()) {
             it->markAsCounted();
-            sequenceTracker++;
+            sequenceTracker++; 
         }
     }
 }
 
+/**
+ * @brief Checks if a sequence has finished playing 
+ * @return true if all notes in the sequence have been processed and played, false otherwise 
+ */
 bool Generator::isSequenceFinished() {
     if(sequenceTracker >= noteSequence.size()) {
         sequenceTracker = 0; // Reset for the next sequence 
@@ -190,6 +217,9 @@ bool Generator::isSequenceFinished() {
     return false;
 }
 
+/**
+ * @brief Resets all notes in the sequence to their original timing parameters and resets the sequenceTracker, allowing the entire sequence to be replayed from the beginning
+ */
 void Generator::resetSequence() {
     sequenceTracker = 0;
     for (auto& note : noteSequence) {
@@ -201,7 +231,7 @@ juce::File Generator::createMidiFile(double bpm) {
     juce::MidiFile midiFile;
     juce::MidiMessageSequence track;
     
-    // Parse the JSON to get note data with beat timing
+    // Parse the JSON to get note data with beat timing 
     auto notesJson = juce::JSON::parse(sequenceJSON);
     if (notesJson.isObject())
     {
@@ -273,6 +303,12 @@ juce::File Generator::createMidiFile(double bpm) {
     return midiFileOutput;
 }
 
+/**
+ * @brief Sends user's prompt to OpenAI API and handle JSON response 
+ * @param prompt User's prompt 
+ * @param recentPrompts An array of the recent prompts to provide context to the API
+ * @param callback A function to call that takes in a juce::String with the API response once it has been received and processed 
+ */
 void Generator::sendToGenerator(const juce::String& prompt,
                                 const juce::StringArray& recentPrompts,
                                 std::function<void(juce::String)> callback)
@@ -288,11 +324,13 @@ void Generator::sendToGenerator(const juce::String& prompt,
     // Set loading flag at the start
     loading = true;
 
-    // Build JSON request.
+    // Build JSON request
     juce::String requestInput = apiInstructions;
     if (recentPrompts.size() > 0)
     {
-        requestInput << "\n\nContext from previous user prompts (oldest to newest, max 2):";
+
+        // Add recent prompts as context to the request input 
+        requestInput << "\n\nContext from previous user prompts (oldest to newest):";
         for (int i = 0; i < recentPrompts.size(); ++i)
             requestInput << "\n- Previous prompt " + juce::String(i + 1) + ": " + recentPrompts[i];
     }
@@ -302,7 +340,7 @@ void Generator::sendToGenerator(const juce::String& prompt,
     jsonBody->setProperty("model", "gpt-5.2-2025-12-11");
     jsonBody->setProperty("input", requestInput);
 
-    // Force JSON-only output 
+    // Create nested JSON object to force API to return a JSON response that can be easily parsed 
     juce::DynamicObject::Ptr formatConfig = new juce::DynamicObject();
     formatConfig->setProperty("type", "json_object");
     juce::DynamicObject::Ptr textConfig = new juce::DynamicObject();
@@ -314,8 +352,8 @@ void Generator::sendToGenerator(const juce::String& prompt,
     DBG("Request URL: " + apiEndpoint);
     DBG("Request Body: " + jsonString);
 
+    // Build POST request 
     juce::URL url = juce::URL(apiEndpoint).withPOSTData(jsonString);
-
     auto options = juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inAddress)
         .withExtraHeaders(
             "Content-Type: application/json\r\n"
@@ -325,20 +363,22 @@ void Generator::sendToGenerator(const juce::String& prompt,
         .withNumRedirectsToFollow(MAX_REDIRECTS);
 
 
-    // Send request on a background thread
-    // Capture shared state to safely check if Generator still exists
+    // Send POST request on a background thread to prevent freezing the UI 
     auto state = sharedState;
     juce::Thread::launch([state, url, options, callback, this]() mutable
     {
         DBG("Starting HTTP request...");
 
-        int statusCode = 0; 
+        int statusCode = 0; // variable holding HTTP status code from response 
 
-        auto stream = url.createInputStream(options.withStatusCode(&statusCode));
+        auto stream = url.createInputStream(options.withStatusCode(&statusCode)); // Send the API request and capture pointer to input stream + HTTP status code 
 
+        // Handle connection errors
         if (stream == nullptr)
         {
             DBG("Failed to create stream. Status code: " + juce::String(statusCode));
+
+            // Call back on main thread to update UI and trigger any callbacks, but only if Generator is still valid
             juce::MessageManager::callAsync([state, callback, statusCode, this]()
             {
                 if (state->isValid)
@@ -351,10 +391,12 @@ void Generator::sendToGenerator(const juce::String& prompt,
             return; 
         }
 
+        // Read the entire response as a string
         juce::String response = stream->readEntireStreamAsString();
         DBG("Status Code: " + juce::String(statusCode));
         DBG("OpenAI Raw Response:\n" + response);
-
+        
+        // Handle non-200 HTTP responses as errors
         if (statusCode != 200)
         {
             juce::MessageManager::callAsync([state, callback, response, statusCode, this]()
@@ -368,21 +410,19 @@ void Generator::sendToGenerator(const juce::String& prompt,
             });
             return;
         }
-        
-        // Call back on main thread - the callback will handle getSequenceJSON
+
+        // Queue callback on main thread in the case of a successful response
         juce::MessageManager::callAsync([state, this, callback, response]()
         {
-            // Check if Generator is still valid before accessing member variables
             if (state->isValid)
             {
-                // Parse the sequence JSON on the main thread
+                // Parse the sequence JSON on the main thread 
                 getSequenceJSON(response);
-                // Clear loading flag after successful response 
                 loading = false;
             }
             
             if (callback)
-                callback(response);
+                callback("Kiwi");
         });
     });
     

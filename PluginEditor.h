@@ -6,7 +6,7 @@
   ==============================================================================
 */
 
-#pragma once
+#pragma once 
 
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
@@ -33,11 +33,15 @@ private:
     KiwiPluginAudioProcessor& audioProcessor;
     juce::TextEditor textEntry;
     juce::TextButton replayButton;
+
     ChatHistoryComponent chatHistory;
+
     juce::Image kiwiImage;
     float rotationAngle = 0.0f;
     bool isLoading = false;
     CustomLookAndFeel customLookAndFeel;
-    
+
+    AnalyticsService analytics;
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (KiwiPluginAudioProcessorEditor)
 };

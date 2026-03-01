@@ -14,15 +14,18 @@ class MidiNote {
 
         void processNote(int blockSize, juce::MidiBuffer& midiMessages);
         
-        void reset();
+        void reset(); 
 
     private:
         MidiNoteEvent note; 
-        int noteOnCountdownSamples;
-        int noteOffCountdownSamples;
-        int originalOnSamples;
-        int originalOffSamples;
-        bool counted = false;
+        int noteOnCountdownSamples; // How many samples from now until the next note-on event should be triggered
+        int noteOffCountdownSamples; // How many samples from now until the next note-off event should be triggered
+
+        // Original timing parameters for resetting the sequence -> essential for replay functionality
+        int originalOnSamples; 
+        int originalOffSamples; 
+
+        bool counted = false; // Keeps track of whether note has finished playing and been counted towards sequence completion to avoid
 
         void noteOn(int blockSize, juce::MidiBuffer& midiMessages);
         
